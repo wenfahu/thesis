@@ -16,7 +16,8 @@ Winograd 卷积的一般过程包括输入变换（input transform），权重�
 
 若使用F(m, r)有m个输出的r-tap FIR滤波器，F(m, r) 接收的输入的大小为 ( m + r - 1)， 则 Winograd 卷积算法可以表示为
 
-\begin{align}\label{eq:winograd1d}
+\begin{align}
+\label{eq:winograd1d}
   Y = A^T [(Gg) \circ (B^Td)]
 \end{align}
 
@@ -49,13 +50,13 @@ Winograd卷积实现，其中的乘法操作的规模为 $( m + r - 1)^2$。而�
 的多项式乘法，转换为多项式在固定数目的插值点处取值的逐元素乘法。 Cook-Toom算法的缺点是，随着变换大小的增加，变换很快变得不稳定。 但是，它们非常适合卷积神经网络中使用的3x3小卷积。
 
 Winograd快速卷积算法的更一般形式是使用中国剩余定理。 Cook Toom 算法只是其中之一。而这一过程的具体不在本文的范畴，有兴趣的可以参考 Fast Algorithm for Convolutional 
-Neural Networks 中的补充材料（https://github.com/andravin/wincnn/blob/master/2464-supp.pdf）。
+Neural Networks 中的补充材料。
 
 
 快速卷积算法相对于直接卷积和基于GEMM的卷积（比如im2col，im2row等）的实现的主要一大优化目标在于减小运算中乘法的规模，尽管快速卷积方法往往为实现减少乘法的次数而不惜引入
 一些额外的加法操作以及对于输入的变换，但在运算中乘法操作达到一定的规模后，乘法数目减少所带来的计算收益是可以超过这些额外的开销的。值得注意的是，快速卷积方法中为减少乘法
 操作而不惜引入加法的这一优化手段，并不是因为加法操作会比乘法操作快，这个概念具体到现代的硬件设备上的乘法和加法实现实际上往往是站不住脚的，而实际上在现代硬件设备中
-乘法和加法操作往往是可以聚合（fused）在一起的，也就是乘累加（multiply & acculate）操作。从而即使额外引入加法，在仔细设计算法执行后，在具体的硬件实现中，也不会带来
+乘法和加法操作往往是可以聚合（fused）在一起的，也就是乘累加（multiply and acculate）操作。从而即使额外引入加法，在仔细设计算法执行后，在具体的硬件实现中，也不会带来
 额外的计算开销。
 
 而另外一方面，作为另外一种更为常用的快速卷积方法实现，快速傅里叶变换（FFT）方法在整体的形式上同Winograd 方法\ref{eq:winograd1d}类似，
@@ -126,7 +127,7 @@ SIMD 计算中，可以用 4 个 128位的寄存器来存储一个 4x4 矩阵的
 需要将8位整数转换为16位整数，而转换为16位整数之后，同一位置的多个channel的数据刚好占满一个128位的寄存器。最终变换输出的结果也是由16位带符号整数表示。
 
 而对于权重变换而言，在通用的Winograd 卷积变换中，同上述输入变换所对应的权重变换矩阵G 为 
-\being{align}
+\begin{align}
 G = 
 \begin{pmatrix}
   1 & 0 \\
@@ -226,7 +227,7 @@ NEON 作为一个SIMD 并行计算的协处理单元，具有以下流水线执�
 直观而言，矩阵乘法可以视作是矩阵A 中的行同矩阵 B 中的对应的列的点积的集合，是对应矩阵元素的乘积的和（sum of element-wise multiplication）。简单的伪码
 实现如下：
 
-\begin{listing}
+\begin{lstlisting}
 \label{code:matmul_naive}
   for (int i = 0; i < m; i++) {
     for (int j = 0; j < n; j++) {
@@ -235,7 +236,7 @@ NEON 作为一个SIMD 并行计算的协处理单元，具有以下流水线执�
       }
     }
   }
-\end{listing}
+\end{lstlisting}
 
 对这一简单直接的矩阵乘法的实现的可视化可如下图所示
 
@@ -365,7 +366,7 @@ B 中的元素也需要被用于执行不止一次计算，而要实现这一点
 计算矩阵C 中的一个子矩阵的顺序会影响到矩阵A 和矩阵 B 的内存访问模式。理想的内存访问模式是 将矩阵B加载到我们的L1缓存中，并保存很长时间 。
 实现此目的的一种方法是对矩阵C的计算进行分块。而在每次计算中只需要计算 C 中被分割出的这一块即可。对应的伪码实现如下：
 
-\begin{listing}
+\begin{lstlisting}
   \label{code:tiled_matmul}
   for i = 1 to N
     for j = 1 to N
@@ -376,7 +377,7 @@ B 中的元素也需要被用于执行不止一次计算，而要实现这一点
         
         C{i, j} = A{i, k} * B{k, j} // matrix multiplication on tile
       { write C{i, j} to slow memory }
-\end{listing}
+\end{lstlisting}
 
 假设A, B, C 矩阵都是 $n x n$ 的矩阵，这里对于矩阵的分块每一个小块的尺度则是 $b x b$，记 $N = n / b$ , 这一算法在低速存储设备上的存储访问操作（memory operation）
 为
@@ -397,8 +398,8 @@ B 中的元素也需要被用于执行不止一次计算，而要实现这一点
 
 在如下图所示的矩阵乘法算法中。首先，将大小为m，n和k的矩阵乘法在 k 所表示的维度以$k_c$ 大小的高速缓存块进行分割，从而创建rank为k的子问题。 在这一阶段，
 为了实现在计算的最基础层次上上，参与计算的元素在存储中是完全连续的，即矩阵表示中最低维度对应的stride为unit stride，需要将B以一种特殊的格式分块打包到连续存储中
-（标记为\bar{B}）。 然后，将每个rank为k的子问题沿m维度，按照缓存块大小$m_c$分块，从而创建block-panel子问题。 然后将当前的$m_c×k_c$块, 记为$A_i$, 按照计算中的
-最基础级别，参与计算的元素在存储中是连续的的原则，打包到\bar{A}。 然后将剩下的该block-panel子问题（$C_i：= C_i + \bar{A}_i \bar{B}$）实现为高度优化的汇编
+（标记为B ）。 然后，将每个rank为k的子问题沿m维度，按照缓存块大小$m_c$分块，从而创建block-panel子问题。 然后将当前的$m_c×k_c$块, 记为$A_i$, 按照计算中的
+最基础级别，参与计算的元素在存储中是连续的的原则，打包到A。 然后将剩下的该block-panel子问题（$C_i：= C_i + A_i B$）实现为高度优化的汇编
 计算内核。 而该内核将继续沿$n$，$m_c$划分矩阵，最后在$k_c$维划分矩阵。
 
 \begin{figure}
@@ -430,7 +431,7 @@ DFT卷积的结果是一个循环卷积（circular convolution/ cyclic convoluti
 个元素。
 
 \subsection{FFT卷积与Winograd卷积}
-离散傅里叶变换方法的有效卷积可以视作 Winograd 卷积 \ref{eq:winograd1d} 的一种特殊情形，其中的矩阵$AT^$, $B^T$ 和 $G$ 均处于复数域，并且由多项式点
+离散傅里叶变换方法的有效卷积可以视作 Winograd 卷积 \ref{eq:winograd1d} 的一种特殊情形，其中的矩阵$A^T$, $B^T$ 和 $G$ 均处于复数域，并且由多项式点
 （ polynomial point）为单位根的范德蒙矩阵（Vandermonde matrices）推导出。
 
 Winograd 与 FFT 卷积中主要能够降低计算成本的一点在于，权重的变换可以预先计算，而卷积输入的变换则可以多次复用，而计算本身中比重最大的部分仍然是矩阵乘法
@@ -464,7 +465,7 @@ A12芯片以及iPhone 11 的 A13芯片，在很多的嵌入式设备场景下的
   （u_r + i u_i) (v_r + i v_i) = u_r v_r - u_i v_i + i ( u_i v_r + u_r v_i )
 \end{align}
 
-而对于\ref{eq:complex_nul} 稍加变换既可以得到复数乘法的快速算法，该方法只需要三个实数乘法。
+而对于\ref{eq:complex_mul} 稍加变换既可以得到复数乘法的快速算法，该方法只需要三个实数乘法。
 
 \begin{align}
 \label{eq:complex_mul_fast}
@@ -510,17 +511,18 @@ Winograd 算法的动机看似是有点不合理的，毕竟在前文中也提�
 表示，从而在引入可接受的运算开销的前提下实现量化计算。
 
 \begin{align}
+  B^T = 
+  \begin{pmatrix}
+    1 & 0 & 0 & 0 -1 & 0 \\
+    0 & 1 & 1 & 1 & 1 & 0\\
+    0 & -1 & 1 & -1 & 1 & 0 \\
+    0 & -i & -1 & i & 1 & 0 \\
+    0 & i & -1 & -i & 1 & 0 \\
+    0 & -1 & 0 & 0 & 0 & 1
+  \end{pmatrix}
+\end{align}
 
-B^T = 
-\begin{pmatrix}
-  1 & 0 & 0 & 0 -1 & 0 \\
-  0 & 1 & 1 & 1 & 1 & 0\\
-  0 & -1 & 1 & -1 & 1 & 0 \\
-  0 & -i & -1 & i & 1 & 0 \\
-  0 & i & -1 & -i & 1 & 0 \\
-  0 & -1 & 0 & 0 & 0 & 1
-\end{pmatrix}
-
+\begin{align}
 G = 
 \begin{pmatrix}
   1 & 0 & 0 \\
@@ -530,13 +532,14 @@ G =
   \frac{1}{4} & -\frac{i}{4} & -\frac{1}{4} \\
   0 & 0 & 1 \\
 \end{pmatrix}
+\end{align}
 
-A^T = 
-\begin{pmatrix}
-  1 & 1 & 1 & 1 &1 &0\\ 
-  0 & 1 & −1 & i & −i & 0\\
-  0 & 1 & 1 & −1 & −1 & 0\\
-  0 & 1 & −1 & −i & i & 1
-\end{pmatrix}
-
+\begin{align}
+  A^T = 
+  \begin{pmatrix}
+    1 & 1 & 1 & 1 &1 &0\\ 
+    0 & 1 & −1 & i & −i & 0\\
+    0 & 1 & 1 & −1 & −1 & 0\\
+    0 & 1 & −1 & −i & i & 1
+  \end{pmatrix}
 \end{align}
