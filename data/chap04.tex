@@ -1,0 +1,163 @@
+
+\section{线程并行化}
+前面描述的方法对于计算的并行化处理大多处于指令级别，通过SIMD 矢量处理器的数据并行化处理，
+实现指令级别的并行化（Instruction Level Parallelism, ILP）。除此之外，多线程
+执行也是实现并行计算的重要手段，称为线程级并行化（Thread Level Parallelism, TLP）。
+线程级的并行化处理可以对于处理器内核（core）的计算资源的更为有效的利用，多线程的处理可以
+使得superscalar\footnote{超标量体系结构是许多处理器中使用的并行计算方法。 在超标量计算机中，中央处理单元（CPU）管理多个指令流水线，以在一个时钟周期内同时执行多个指令。 这是通过将不同的流水线通过处理器中的多个执行单元来实现的。 为了成功实现超标量架构，CPU的指令获取机制必须智能地检索和委托指令。 否则，可能会发生管道停顿，从而导致执行单元经常处于空闲状态。
+} 架构的处理器的执行单元被全部调用，同时通过流水线（pipeline）调度来隐藏
+访存所需要的延时（memory latency）。而使用线程并行化的同时也存在着一些额外的需求或者
+开销： 首先需要额外的存储满足线程上下文（thread context）的需求，而线程并行化也要求被
+优化的程序具有在最基础的指令并行之外的并行度；另外一方面，多线程也会对于内存带宽带来额外的
+压力，更多的线程，意味着每个单独的线程所获得的缓存空间会更小。
+
+当前的绝大多数的基于ARM 架构的SoC 都会集成多个 CPU core, 另外ARM 也在计算密集的场景下针对性
+的对于处理器添加了SMT(Simultaneous multithreading )支持，比如针对于自动驾驶应用优化的Cortex 
+A76AE 微架构。
+
+在实现计算的多线程并行化的过程中，不仅仅要保证被并行的任务中的子任务之间没有依赖，保证子任务
+执行的独立性，同时需要避免在多线程执行中可能存在的 False Sharing 和 Cache Line Ping-pong.
+
+\begin{itemize}
+  \item 当不同的线程具有程序中未共享的数据，但此数据被映射到共享的缓存行(cache line)时，
+  就会发生False Sharing。 例如，假设一个程序具有一个整数数组，其中一个线程执行读取和写
+  入具有偶数索引的所有数组条目，而另一个线程执行读取和写入具有奇数索引的条目。 在这种情况下
+  ，线程实际上将不会共享数据，但是它们将共享高速缓存行，因为每条高速缓存行都将包含奇数和偶数
+  索引值。
+  \item 高速缓存行ping-pong是在多个CPU（或内核）之间快速连续传输高速缓存行的效果。
+  本质上，如果多个CPU试图在同一高速缓存行中读取和写入数据，则该高速缓存行可能必须快速连续地
+  在两个线程之间传输，并且这可能会导致性能显着下降（甚至与单线程相比，性能可能更差）。
+\end{itemize}
+
+针对于此，实现多线程处理中需要特别注意以下几点：
+
+\begin{itemize}
+    \item 尽可能向同一个CPU 执行写入操作；
+    \item 为每个CPU 指定对应的内存；将线程锁定在对应的CPU；
+    \item 避免将频繁读写但本身并没有关联的数据放在同一个 Cache Line 中;
+\end{itemize}
+
+因此在实现过程中，这里结合本文中的 Winograd 卷积实现设计的空间局部区域的独立性，在特征的输入
+变换，GEMM 实现，以及结果的输出变换中，对于整体的图像或者中间特征做了区域性的划分，并在这一层级
+上实现多线程的并行，保证每个单独的region 的处理都是独立的，并且向各个处理阶段对应的buffer 输出
+处理结果的过程中，各个region 所对应的地址空间避开处于同一cache line的情形。从而保证这一 regional wise
+的 Winograd 算法实现在多线程并行下的高效性。
+
+
+\seciont{端到端整数计算支持}
+
+在量化计算的量化策略中，本文选择了一种相对简单有效且在实际平台可以具有广泛应用和实现的方案。
+
+矩阵中的每个值均以放射变换的方法（线性变换）通过比例因子和零点值被量化映射到低精度的表示，因此量化域(这里的实现为
+8为无符号整数)中的计算可以
+直接映射到实数域。比例因子和零点值被矩阵中的多个值所共享，即矩阵中的所有行使用相同的比例因此和零点。
+量化矩阵中的值 $x_r$可以通过如下简单的变换方式实现到实数矩阵中的值 $x_q$ 的变换。
+
+\begin{align}
+  x_r = a_{scale} (x_q - a_{zero_point})
+\end{align}
+
+这里的比例因子（scale factor） $a_scale$ 一般而言是一个浮点值，而参考在 \cite{Jacob2017QuantizationAT}
+对于比例因此的处理，按照上面的实数域和量化域的表示，实数域的值 $x_r, y_r, z_r$ 所对应的量化域中的值分别为
+$x_q, y_q, z_q$，三者各自对应的比例因子为 $x_{scale}, y_{scale}, z_{scale}$ , 零点为 $x_{zero}， y_{zero}，
+ z_{zero}$
+那么对应的实数域的乘法的计算可以表示为
+
+\begin{align}
+\label{eq:quan_arith}
+z_r &= x_r \cdot y_r
+z_{scale} \cdot (z_q - z_{zero}) &= (x_{scale} \cdot (x_q - x_{zero})) \cdot (y_{scale} \cdot (y_q - y_{zero}))
+z_q - z_{zero} &= \frac{x_{scale}\cdot y_{scale}}{z_{scale}} (x_q - x_{zero}) (y_q - y_{zero})
+z_q &= \frac{x_{scale}\cdot y_{scale}}{z_{scale}} (x_q - x_{zero}) (y_q - y_{zero}) + z_{zero}
+\end{align}
+
+这里\ref{eq:quan_arith} 可见实数乘法所对应的量化值乘法，也具备着同实数值和量化值的映射所类似的线性变换形式，
+而这里的比例因子 $ M = \frac{x_{scale} y_{scale}}{z_{scale}}$, 按照 \cite{Jacob2017QuantizationAT} 中的经验性
+统计可以表示为
+\begin{align}
+M = 2^{-n} M_0
+\end{align}
+而其中， $M_0 \in [0.5, 1)$ 且 n 为非负整数。$ M_0$现在很适合表示为定点乘法器（例如，int16或int32取决于硬件）。
+例如，如果使用int32，则表示$M_0$的整数是最接近$2^{31}M_0$的int32值。 由于$M_0> 0.5$，因此该值始终至少为$2^{30}$，
+因此始终至少具有30位相对精度。 因此，与$M_0$的乘法可以实现为定点乘法。 同时乘以$2^{-n}$可以有效移位来实现
+
+另外，这里的实现中计算操作的输入和网络的权重均为8位无符号整数表示，8位整数的乘法一般会使用32位的累加器，
+而在Winograd 卷积实现的将输入由空间域向winograd域 变换过程中，F（2，3） 的Winograd 算法中基本只涉及加减操作，
+在这一过程中将输入的无符号8位整数转换为16位带符号整数做处理，并且在后续的矩阵乘法操作中实现中使用 32 位的累加器,
+每次乘累加操作中，将16位整数乘法的结果widen 到32位再加到32位的累加器中。而在一般的基于GEMM的量化卷积实现中，
+累加结束后，会再次通过量化，将32位 的整数表示转换位8位整数的表示，这一过程可以称为再量化（re-quantization ）或者后累加量化（post-accumulation quantization）
+而Winograd 卷积的实现中，乘累加操作结束之后，还需要执行输出变换操作，将Winograd 域中的矩阵乘法结果转换回空间域,
+此后再执行量化，并将量化之后的8位整数输出，从而降低对于内存带宽的压力和缓存占用。
+
+zero point 
+shift
+requant
+
+instruction latency
+https://community.arm.com/developer/tools-software/oss-platforms/b/android-blog/posts/arm-neon-optimization
+https://community.arm.com/developer/tools-software/oss-platforms/b/android-blog/posts/arm-neon-programming-quick-reference
+
+winograd numerical error
+
+\section{Winograd 算法数值稳定性}
+
+尽管Winograd 算法是现已知的在计算复杂度而言最优的卷积算法， 然而 Winograd 卷积算法具有着数值
+计算不稳定的特质。在卷积的尺度相对比较小（比如F(2,3), F(4, 3)），并且参与运算的数值为单精度或
+者双精度浮点数时，Winograd 卷积的结果仍然是相当精确的，但是当卷积的尺度变大，或者参数计算的数值
+精度降低时，这一情况却不容乐观了。这也限制了Winograd 卷积的适用范围，在卷积核或者卷积操作输入的
+子块的尺度较大的情形下，Winograd卷积的精确性便会有比较明显的损失。 Winograd 卷积计算的精确性
+可以通过找出更加合适的Winograd 算法的导出式有关，即通过 Toom-Cook 算法或者CRP理论选择合适的
+interpolation points导出对应的输入变化，权重变换和输出变换矩阵。 这里需要说明的一点是，Winograd 
+卷积的数值不稳定性，带来的只是一种边际数值误差（marginal error），因此，Winograd 卷积在很多情形
+下只是应用于模型 的推理阶段，
+即网络在训练的过程中使用常规的卷积算法，而在模型前向推理的过程中，是完全可以将对应的满足条件的
+卷积操作可以替换为 Winograd 卷积算法。
+
+\begin{table}[]
+\label{tbl:winograd_acc}
+\caption{ResNet 18 在不同尺度和不同精度的Winograd 卷积算法下的CIFAR-10 分类准确率}
+\begin{tabular}{llll}
+\hline
+\multicolumn{1}{|l|}{}                 & \multicolumn{1}{l|}{32 bit} & \multicolumn{1}{l|}{16 bit} & \multicolumn{1}{l|}{8 bit} \\ \hline
+\multicolumn{1}{|l|}{Direct  Conv}     & \multicolumn{1}{l|}{93.16}  & \multicolumn{1}{l|}{93.60}  & \multicolumn{1}{l|}{93.22} \\ \hline
+\multicolumn{1}{|l|}{Winograd F(2, 3)} & \multicolumn{1}{l|}{93.16}  & \multicolumn{1}{l|}{93.48}  & \multicolumn{1}{l|}{93.21} \\ \hline
+\multicolumn{1}{|l|}{Winograd F(4, 3)} & \multicolumn{1}{l|}{93.14}  & \multicolumn{1}{l|}{19.25}  & \multicolumn{1}{l|}{17.36} \\ \hline
+Winograd F(6, 3)                       & 93.11                       & 11.41                       & 10.95                     
+\end{tabular}
+\end{table}
+
+表 \ref{tbl:winograd_acc} 中对比了不同尺度的Winograd 卷积算法在不同精度的数据表示下的准确度及数值
+稳定性，这里以直接卷积算法的准确率作为对照，可见对于输出尺度大于2 的 Winograd 卷积在low precision 
+的场景下在对应视觉任务上的准确率会大幅下降，而这里指的Winograd 卷积指的是在 \cite{Lavin2015FastAF}
+以及附带的Toom Cook 方法代码中所导出Winograd 算法形式。究其原因在于，在Winograd 卷积的输出尺度较大
+时, 如\ref{eq:winograd_f43} 可见，在变换矩阵 $A^T, G, B^T$ 中对应的数值的范围会变大，并且注意，在
+卷积神经网络中常用的2D 卷积中，将其转换为整数型计算时，权重变换矩阵 G 需要扩大 24 倍，则卷积计算过程
+中，至少要保证在 $\pm24^2$ 范围内数据的表示和计算数值精度 。
+\begin{align}
+\label{eq:winograd_f43}
+  A^T = 
+  \begin{pmatrix}
+      1 & 1 & 1 &  1 &  1 &  0\\
+      0 & 1 & -1&  2 &  -2&  0\\
+      0 & 1 & 1 &  4 &  4 &  0\\
+      0 & 1 & -1&  8 &  -8&  1
+  \end{pmatrix}
+  G = 
+  \begin{pmatrix}
+    \frac{1}{4} & 0 & 0 \\
+    -\frac{1}{6} & -\frac{1}{6} & -\frac{1}{6} \\
+    -\frac{1}{6} & \frac{1}{6} & -\frac{1}{6} \\
+    \frac{1}{24} & \frac{1}{12} & \frac{1}{6} \\
+    \frac{1}{24} & -\frac{1}{12} & \frac{1}{6} \\
+    0 & 0 & 1
+  \end{pmatrix}
+  B^T =
+  \begin{pmatrix}
+    4  & 0 &  -5 & 0  &  1&  0\\
+    0  & -4&  -4 & 1  &  1&  0\\
+    0  & 4 &  -4 & -1 &  1&  0\\
+    0  & -2&  -1 & 2  &  1&  0\\
+    0  & 2 &  -1 & -2 &  1&  0\\
+    0  & 4 &  0  & -5 &  0&  1
+  \end{pmatrix}
+\end{align}
