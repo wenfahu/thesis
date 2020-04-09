@@ -48,7 +48,7 @@ A76AE 微架构。
 的 Winograd 算法实现在多线程并行下的高效性。
 
 
-\seciont{端到端整数计算支持}
+\section{端到端整数计算支持}
 
 在量化计算的量化策略中，本文选择了一种相对简单有效且在实际平台可以具有广泛应用和实现的方案。
 
@@ -58,20 +58,20 @@ A76AE 微架构。
 量化矩阵中的值 $x_r$可以通过如下简单的变换方式实现到实数矩阵中的值 $x_q$ 的变换。
 
 \begin{align}
-  x_r = a_{scale} (x_q - a_{zero_point})
+  x_r = a_{scale} (x_q - a_{zero\_point})
 \end{align}
 
 这里的比例因子（scale factor） $a_scale$ 一般而言是一个浮点值，而参考在 \cite{Jacob2017QuantizationAT}
 对于比例因此的处理，按照上面的实数域和量化域的表示，实数域的值 $x_r, y_r, z_r$ 所对应的量化域中的值分别为
-$x_q, y_q, z_q$，三者各自对应的比例因子为 $x_{scale}, y_{scale}, z_{scale}$ , 零点为 $x_{zero}， y_{zero}，
+$x_q, y_q, z_q$，三者各自对应的比例因子为 $x_{scale}, y_{scale}, z_{scale}$ , 零点为 $x_{zero}, y_{zero},
  z_{zero}$
 那么对应的实数域的乘法的计算可以表示为
 
 \begin{align}
 \label{eq:quan_arith}
 z_r &= x_r \cdot y_r
-z_{scale} \cdot (z_q - z_{zero}) &= (x_{scale} \cdot (x_q - x_{zero})) \cdot (y_{scale} \cdot (y_q - y_{zero}))
-z_q - z_{zero} &= \frac{x_{scale}\cdot y_{scale}}{z_{scale}} (x_q - x_{zero}) (y_q - y_{zero})
+z_{scale} \cdot (z_q - z_{zero}) &= (x_{scale} \cdot (x_q - x_{zero})) \cdot (y_{scale} \cdot (y_q - y_{zero})) \\
+z_q - z_{zero} &= \frac{x_{scale}\cdot y_{scale}}{z_{scale}} (x_q - x_{zero}) (y_q - y_{zero})\\
 z_q &= \frac{x_{scale}\cdot y_{scale}}{z_{scale}} (x_q - x_{zero}) (y_q - y_{zero}) + z_{zero}
 \end{align}
 
@@ -115,37 +115,36 @@ footprint）。每次执行单个操作的过程中，都需要从memory系统�
 而这一操作可以通过 1x1 卷积实现。给定一个输入特征 F，其data layout 为 $C \times H \times W$, 其对应的Batch Norm的
 结果$\hat{F}$可通过计算每个空间位置$i, j$的如下矩阵-矢量乘法获得：
 
-\begin{align}
+\begin{equation}
 \label{eq:bn_matvec}
-\begin{pmatrix}
-\hat{F_{1,i,j}} \\
-\hat{F_{2,i,j}} \\
-\vdots \\
-\hat{F_{C,i,j}}
-\end{pmatrix}
-=
-\begin{pmatrix}
-\frac{\gamma_{1}{\sqrt{\sigma_{1}^2 + \epsilon}}} & 0 & \dots & 0 \\
-0 & \frac{\gamma_{2}{\sqrt{\sigma_{2}^2 + \epsilon}}}  & \dots & 0 \\
-\vdots \\
-0 & 0 & \dots & \frac{\gamma_{C}{\sqrt{\sigma_{C}^2 + \epsilon}}} 
-\end{pmatrix}
-+
-\begin{pmatrix}
-\begin{pmatrix}
-F_{1,i,j} \\
-F_{2,i,j} \\
-\vdots \\
-F_{C,i,j}
-\end{pmatrix}
-+ 
-\begin{pmatrix}
-\beta_{1} - \gamma_1 \frac{\mu_1}{\sqrt{\sigma_1^2 + \epsilon}}\\
-\beta_{2} - \gamma_2 \frac{\mu_2}{\sqrt{\sigma_2^2 + \epsilon}}\\
-\vdots\\
-\beta_{C} - \gamma_C \frac{\mu_C}{\sqrt{\sigma_C^2 + \epsilon}}\\
-\end{pmatrix}
-\end{align}
+	\begin{pmatrix}
+		\hat{F_{1,i,j}} \\
+		\hat{F_{2,i,j}} \\
+		\vdots \\
+		\hat{F_{C,i,j}}
+	\end{pmatrix}
+	=
+	\begin{pmatrix}
+		\frac{\gamma_{1}{\sqrt{\sigma_{1}^2 + \epsilon}}} & 0 & \dots & 0 \\
+		0 & \frac{\gamma_{2}{\sqrt{\sigma_{2}^2 + \epsilon}}}  & \dots & 0 \\
+		\vdots \\
+	        0 & 0 & \dots & \frac{\gamma_{C}}{\sqrt{\sigma_{C}^2 + \epsilon}}
+	\end{pmatrix}
+	+
+	\begin{pmatrix}
+		F_{1,i,j} \\
+		F_{2,i,j} \\
+		\vdots \\
+		F_{C,i,j}
+	\end{pmatrix}
+	+ 
+	\begin{pmatrix}
+		\beta_{1} - \gamma_1 \frac{\mu_1}{\sqrt{\sigma_1^2 + \epsilon}}\\
+		\beta_{2} - \gamma_2 \frac{\mu_2}{\sqrt{\sigma_2^2 + \epsilon}}\\
+		\vdots \\
+		\beta_{C} - \gamma_C \frac{\mu_C}{\sqrt{\sigma_C^2 + \epsilon}}
+	\end{pmatrix}
+\end{equation}
 
 而Batch Norm操作往往又紧随卷积操作，于是可以将Batch Norm操作融合入卷积操作，将上述的batch norm的矩阵表示\label{eq:bn_matvec}
 表示为 $\hat{F} = W_{bn} \cdot F + b_{bn}$, 其中 $W_{bn} \in R^{CxC}, b_{bn} \in R^C$, 而嵌入Batch Norm 
@@ -202,19 +201,6 @@ interpolation points导出对应的输入变化，权重变换和输出变换矩
 即网络在训练的过程中使用常规的卷积算法，而在模型前向推理的过程中，是完全可以将对应的满足条件的
 卷积操作可以替换为 Winograd 卷积算法。
 
-\begin{table}[]
-\label{tbl:winograd_acc}
-\caption{ResNet 18 在不同尺度和不同精度的Winograd 卷积算法下的CIFAR-10 分类准确率}
-\begin{tabular}{llll}
-\hline
-\multicolumn{1}{|l|}{}                 & \multicolumn{1}{l|}{32 bit} & \multicolumn{1}{l|}{16 bit} & \multicolumn{1}{l|}{8 bit} \\ \hline
-\multicolumn{1}{|l|}{Direct  Conv}     & \multicolumn{1}{l|}{93.16}  & \multicolumn{1}{l|}{93.60}  & \multicolumn{1}{l|}{93.22} \\ \hline
-\multicolumn{1}{|l|}{Winograd F(2, 3)} & \multicolumn{1}{l|}{93.16}  & \multicolumn{1}{l|}{93.48}  & \multicolumn{1}{l|}{93.21} \\ \hline
-\multicolumn{1}{|l|}{Winograd F(4, 3)} & \multicolumn{1}{l|}{93.14}  & \multicolumn{1}{l|}{19.25}  & \multicolumn{1}{l|}{17.36} \\ \hline
-Winograd F(6, 3)                       & 93.11                       & 11.41                       & 10.95                     
-\end{tabular}
-\end{table}
-
 表 \ref{tbl:winograd_acc} 中对比了不同尺度的Winograd 卷积算法在不同精度的数据表示下的准确度及数值
 稳定性，这里以直接卷积算法的准确率作为对照，可见对于输出尺度大于2 的 Winograd 卷积在low precision 
 的场景下在对应视觉任务上的准确率会大幅下降，而这里指的Winograd 卷积指的是在 \cite{Lavin2015FastAF}
@@ -222,6 +208,20 @@ Winograd F(6, 3)                       & 93.11                       & 11.41    
 时, 如\ref{eq:winograd_f43} 可见，在变换矩阵 $A^T, G, B^T$ 中对应的数值的范围会变大，并且注意，在
 卷积神经网络中常用的2D 卷积中，将其转换为整数型计算时，权重变换矩阵 G 需要扩大 24 倍，则卷积计算过程
 中，至少要保证在 $\pm24^2$ 范围内数据的表示和计算数值精度 。
+
+\begin{table}[]
+\centering
+\caption{ResNet 18 在不同尺度和不同精度的Winograd 卷积算法下的CIFAR-10 分类准确率}
+\begin{tabular}{llll}
+\hline
+\multicolumn{1}{|l|}{}                 & \multicolumn{1}{l|}{32 bit} & \multicolumn{1}{l|}{16 bit} & \multicolumn{1}{l|}{8 bit} \\ \hline
+\multicolumn{1}{|l|}{Direct  Conv}     & \multicolumn{1}{l|}{93.16}  & \multicolumn{1}{l|}{93.60}  & \multicolumn{1}{l|}{93.22} \\ \hline
+\multicolumn{1}{|l|}{Winograd F(2, 3)} & \multicolumn{1}{l|}{93.16}  & \multicolumn{1}{l|}{93.48}  & \multicolumn{1}{l|}{93.21} \\ \hline
+\multicolumn{1}{|l|}{Winograd F(4, 3)} & \multicolumn{1}{l|}{93.14}  & \multicolumn{1}{l|}{19.25}  & \multicolumn{1}{l|}{17.36} \\ \hline
+\multicolumn{1}{|l|}{Winograd F(6, 3)} & \multicolumn{1}{l|}{93.11}  & \multicolumn{1}{l|}{11.41}  & \multicolumn{1}{l|}{10.95} \\ \hline
+\end{tabular}
+\label{tbl:winograd_acc}
+\end{table}
 \begin{align}
 \label{eq:winograd_f43}
   A^T = 

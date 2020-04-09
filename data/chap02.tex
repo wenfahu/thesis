@@ -43,18 +43,18 @@ PxQ，以及卷积操作由四维张量所表示的权重，各个维度的尺�
 于是直接卷积算法的处理过程中，如\ref{code:direct_conv}所示，具有七重循环，其中输入的特征
 为I，卷积的权重为W，而输出的特征为 O 
 
-\begin{lstlisting}
-\label{code:direct_conv}
+\begin{lstlisting}[caption={直接卷积实现},label={code:direct_conv}, mathescape=true]
   for n = 0 to N -1 do
     for k = 0 to K - 1 do
       for c = 0 to K -1 do
         for oj = 0 to P -1 do
           for oi = 0 to Q - 1 do
-            ij = stride \times oj
-            ii = stride \times oi
+            ij = stride $\times$ oj
+            ii = stride $\times$ oi
             for r = 0 to R - 1 do
               for s = 0 to S - 1 do
-                O[n][k][oj][oi] += I[n][c][ij + r][ii + s] \times W[k][c][r][s]
+                O[n][k][oj][oi] += I[n][c][ij + r][ii + s]
+		                  $\times$ W[k][c][r][s]
 \end{lstlisting}
 
 而考虑到现代主流硬件普遍支持向量化处理（vectorization）的并行计算，在对应的架构下，处理器
@@ -71,32 +71,31 @@ PxQ，以及卷积操作由四维张量所表示的权重，各个维度的尺�
 \cite{Georganas2018AnatomyOH} 对于直接卷积算法提出了如算法\ref{algo:opt_direct_conv}
 所示的优化
 
-\begin{lstlisting}
-\label{algo:opt_direct_conv}
-  C_b = C / VLEN
-  K_b = K / VLEN
-  P_b = P / RB_P
-  Q_b = Q / RB_Q
+\begin{lstlisting}[caption={优化直接卷积算法}, label={algo:opt_direct_conv}, breaklines, mathescape=true]
+  $C_b$ = C / VLEN
+  $K_b$ = K / VLEN
+  $P_b = P / RB_P$
+  $Q_b = Q / RB_Q$
   for n = 0 to N =1 do
-    for k_b = 0 to K_b -1 do
-      for c_b = 0 to C_b -1 do
-        for o_jb = 0 to P_b -1 do
-          for o_ib = 0 to Q_b - 1 do
-            ij = stride \times o_jb \times RB_P
-            ii = stride \times o_ib \times RB_Q
-            o_j = o_jb * RB_P
-            o_i = o_ib * RB_Q
+    for $k_b$ = 0 to $K_b$ -1 do
+      for $c_b$ = 0 to $C_b$ -1 do
+        for $o_jb$ = 0 to $P_b$ -1 do
+          for $o_ib$= 0 to $Q_b$ - 1 do
+            $ij = stride \times o_jb \times RB_P$
+            $ii = stride \times o_ib \times RB_Q$
+            $o_j = o_jb * RB_P$
+            $o_i = o_ib * RB_Q$
             for r = 0 to R - 1 do
               for s = 0 to S - 1 do
                 for k = 0 to VLEN do
                   for c = 0 to VLEN do
-                    for p = 0 to RB_P do
-                      for q = 0 to RB_Q do
-                        i\tilde{j} = ij + stride \times p
-                        i\tilde{i} = ii + stride \times q
-                        O[n][k_b][o_j + p][o_i+q][k] += 
-                        W[k_b][c_b][r][s][c][k] * 
-                        I[n][c_b][i\tilde{j} + r][i\tilde{i}+s][c]
+                    for p = 0 to $RB_P$ do
+                      for q = 0 to $RB_Q$ do
+                        $i\tilde{j} = ij + stride \times p$
+                        $i\tilde{i} = ii + stride \times q$
+                        $O[n][k_b][o_j + p][o_i+q][k] += $
+                        $W[k_b][c_b][r][s][c][k] * $
+                        $I[n][c_b][i\tilde{j} + r][i\tilde{i}+s][c]$
 \end{lstlisting}
 
 直接卷积乘法无需考虑额外的变换，也没有额外的memory 需求，因而在存储角度考虑实际上是相当高效的，
@@ -125,7 +124,10 @@ Im2col(Image Block to Column)是当前最流行的CPU卷积方案。这一卷积
 product）。从而可以用更大的内存消耗为代价而换取计算加速，
 
 \begin{figure}
-  \includegraphics{Im2col.png}
+	\centering
+	\includegraphics[width=0.8\columnwidth]{Im2col.png}
+	\caption{Im2Col 方法}
+	\label{fig:im2col}
 \end{figure}
 
 简而言之，im2col技术，每个窗口截取，将其展平，然后将它们堆叠为矩阵中的列。 再将内核展平
@@ -133,8 +135,7 @@ product）。从而可以用更大的内存消耗为代价而换取计算加速�
 
 Im2col 的简单伪代码表示如\ref{algo:im2col} 所示，
 
-\begin{lstlisting}
-\label{algo:im2col}
+\begin{lstlisting}[caption={im2col实现}, label={algo:im2col}]
   def im2col(x, kernel_shape):
     # x is input activation
     rows = []
@@ -142,7 +143,8 @@ Im2col 的简单伪代码表示如\ref{algo:im2col} 所示，
     # Assuming Padding = 0, stride = 1
     for row in range(x.shape[0] - 1):
         for col in range(x.shape[1] - 1):
-            window = x[row: row + kernel_shape, col: col + kernel_shape]
+            window = 
+	    x[row: row + kernel_shape, col: col + kernel_shape]
             rows.append(window.flatten())
     return rows.transpose()
 \end{lstlisting}
@@ -165,10 +167,6 @@ $(H_f \times W_f \times C_i) \times (H_o \times W_o) $ 的二维矩阵，可见�
 同Im2col方法不同的是， im2col 方法中将输入的矩阵中的一个子块做降维，MEC 方法在实现的
 过程中会一次将多列值降维，并且通过额外的矩阵乘法调用减少冗余的内存占用。
 
-\begin{figure}
-  \label{fig:mec}
-  \includegraphics{mec.png}
-\end{figure}
 
 如图\ref{fig:mec} 中所示，对于一个 7x7 的输入，和3x3 的卷积核，这里需要实现降维的对象是
 输入矩阵中的3列数据，记输入为 I，则这里需要将 $ I[0:7, 0:3] $ 这一区域中的数据平摊为一维，
@@ -178,6 +176,13 @@ $(H_f \times W_f \times C_i) \times (H_o \times W_o) $ 的二维矩阵，可见�
 卷积核宽度）取一个子矩阵。每一个子矩阵和平摊（flatten）为一维向量的卷积核之间的乘积构成输出
 的一行。 尽管这一过程中需要更多的矩阵乘法调用，但实际的乘法/加法操作则同im2col方法一致。
 在计算复杂度上没有变化。
+
+\begin{figure}
+  \centering
+  \includegraphics[width=0.8\columnwidth]{mec.png}
+  \caption{MEC 卷积方法}
+  \label{fig:mec}
+\end{figure}
 
 MEC 方法可以有效的减少im2col方法中在垂直方向上的数据冗余，在上图所示的计算过程中已经达到了
 相对于im2col 方法54\% 的存储开销减少。这种方法甚至可以达到相对于im2col方法3.2 倍的存储资
@@ -277,8 +282,10 @@ Winograd minimal filtering算法是在信号处理中常用的一类快速算法
 则由输入$k_1, k_2, k_3$ 计算得出，这一过程中输出两个值需要有4个输入，将这一过程用矩阵乘法来做表示
 
 \begin{figure}
+\centering
+\includegraphics[width=0.8\columnwidth]{conv_sliding.png}
+\caption{1D 卷积}
 \label{fig:conv_slide}
-  \includegraphics{conv_sliding.png}
 \end{figure}
 
 
@@ -342,8 +349,10 @@ Winograd minimal filtering算法是在信号处理中常用的一类快速算法
 
 具体而言，对于如图所示的 $F(2x2, 3x3)$ 的场景
 \begin{figure}
+\centering
+\includegraphics[width=0.8\columnwidth]{conv2x2_3x3.png}
+\caption{F(2x2, 3x3) 卷积}
 \label{fig:conv2x2_3x3}
-  \includegraphics{conv2x2_3x3.png}
 \end{figure}
 
 用矩阵乘法的形式表示这一卷积过程
