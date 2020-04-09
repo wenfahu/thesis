@@ -1,3 +1,7 @@
+% !TeX root = ../main.tex
+
+\chapter{卷积操作实现优化}
+\label{cha:chapter04}
 
 \section{线程并行化}
 前面描述的方法对于计算的并行化处理大多处于指令级别，通过SIMD 矢量处理器的数据并行化处理，
@@ -89,15 +93,100 @@ M = 2^{-n} M_0
 而Winograd 卷积的实现中，乘累加操作结束之后，还需要执行输出变换操作，将Winograd 域中的矩阵乘法结果转换回空间域,
 此后再执行量化，并将量化之后的8位整数输出，从而降低对于内存带宽的压力和缓存占用。
 
-zero point 
-shift
-requant
+\section{卷积相关操作的融合}
 
-instruction latency
-https://community.arm.com/developer/tools-software/oss-platforms/b/android-blog/posts/arm-neon-optimization
-https://community.arm.com/developer/tools-software/oss-platforms/b/android-blog/posts/arm-neon-programming-quick-reference
+此外，现在通用的卷积网络中，卷积操作之后通常还带有bias，而在卷积操作之后还通常会紧随着Batch Normalization 操作
+和 Relu 激活函数，这一流程构成了卷积网络中常用的一大范式即，Conv（+ Bias）-> BatchNorm -> Relu。相比于卷积操作
+而言添加Bias，并对输出的特征作Batch Normalization 和 relu激活本身从计算复杂度角度而言，都是不值一提的，但是在
+ARM 设备的这种嵌入市场景下，将这几个流程作为单独的操作在模型的运行时顺序执行，则是需要额外的存储消耗的（memory 
+footprint）。每次执行单个操作的过程中，都需要从memory系统中读入上一操作输出的特征，并且把简单计算操作之后的结果
+再写入memory，这同在嵌入式场景计算和存储资源受限的条件下需要最大化计算/访存操作的比例的优化目标是相悖的。而注意到
+这些后续的操作实际上都是可以转化为区域性（regional wise）inplace 的操作的，特别是Batch Normalization 在模型训练
+结束之后，单纯作inference的过程中是可以和卷积操作实现融合的。以下简述Batch Normalization 同卷积的融合的过程。
 
-winograd numerical error
+对于Batch Norm 的输入特征 $x$, Batch Norm 本身的参数 $\gamma$, $\beta$, 以及训练过程中对于输入特征的统计量
+（exponential moving average）$\mu$ $\sigma$. 操作对应的输出则为 $\tilde{x}$，Batch Norm 操作的形式如下：
+
+\begin{align}
+\label{eq:bn}
+\tilde{x_i} = \gamma \frac{x_i - \mu}{\sqrt{\sigma^2 + \epsilon}} + \beta
+\end{align}
+
+而这一操作可以通过 1x1 卷积实现。给定一个输入特征 F，其data layout 为 $C \times H \times W$, 其对应的Batch Norm的
+结果$\hat{F}$可通过计算每个空间位置$i, j$的如下矩阵-矢量乘法获得：
+
+\begin{align}
+\label{eq:bn_matvec}
+\begin{pmatrix}
+\hat{F_{1,i,j}} \\
+\hat{F_{2,i,j}} \\
+\vdots \\
+\hat{F_{C,i,j}}
+\end{pmatrix}
+=
+\begin{pmatrix}
+\frac{\gamma_{1}{\sqrt{\sigma_{1}^2 + \epsilon}}} & 0 & \dots & 0 \\
+0 & \frac{\gamma_{2}{\sqrt{\sigma_{2}^2 + \epsilon}}}  & \dots & 0 \\
+\vdots \\
+0 & 0 & \dots & \frac{\gamma_{C}{\sqrt{\sigma_{C}^2 + \epsilon}}} 
+\end{pmatrix}
++
+\begin{pmatrix}
+\begin{pmatrix}
+F_{1,i,j} \\
+F_{2,i,j} \\
+\vdots \\
+F_{C,i,j}
+\end{pmatrix}
++ 
+\begin{pmatrix}
+\beta_{1} - \gamma_1 \frac{\mu_1}{\sqrt{\sigma_1^2 + \epsilon}}\\
+\beta_{2} - \gamma_2 \frac{\mu_2}{\sqrt{\sigma_2^2 + \epsilon}}\\
+\vdots\\
+\beta_{C} - \gamma_C \frac{\mu_C}{\sqrt{\sigma_C^2 + \epsilon}}\\
+\end{pmatrix}
+\end{align}
+
+而Batch Norm操作往往又紧随卷积操作，于是可以将Batch Norm操作融合入卷积操作，将上述的batch norm的矩阵表示\label{eq:bn_matvec}
+表示为 $\hat{F} = W_{bn} \cdot F + b_{bn}$, 其中 $W_{bn} \in R^{CxC}, b_{bn} \in R^C$, 而嵌入Batch Norm 
+操作前继的卷积操作之后，这一计算过程则为：
+\begin{align}
+\hat{f_{i,j}} = W_{bn} \cdot (W_{conv} \cdot f_{i,j} + b_{conv}) + b_{bn}
+\end{align}
+
+于是卷积和Batch Norm 两个操作可以通过一个权重为 $W = W_{bn} \cdot W_{conv}$, Bias 为 $b = W_{bn} \cdot b_{conv} + b_{bn}$
+的卷积操作来替代。
+
+除此之外，对卷积的添加Bias 和relu激活，则可以在Winograd卷积的每个子区域的输出变换过程中，在重量化之前，
+in-place的实现添加Bias，而在重量化之后，通过输出值截断（output clamping），实现诸如 Relu或者 Relu6 这样
+的简单的激活函数，从而减少模型运行时对于内存的开销。
+
+\section{NEON 计算指令优化}
+
+到目前实现为止，在ARM 处理器上最为广泛得以应用的并行计算资源便是NEON，这一技术自ARMv7-A ISA起成为ARM芯片
+的处理计算密集型应用的最为通用的主力解决方案，而ARM 也在ARM v8.2A指令架构中提出了对于NEON的矢量计算的扩展
+SVE(Scalable Vector Extension)，然而作为一项可选的扩展，目前的通用ARM计算设备中几乎没有支持这一特性(富士通
+的下一代超算使用ARM架构，支持SVE)。另外例如高通这样的集成电路设计者会在SoC方案中添加一些专门的计算单元，比如
+高通的Hexagon DSP针对性的优化了对于量化计算的支持，HTA（Hexagon Tensor Accelerator）, HVX(Hexagon Vector 
+eXtension) 的支持，使得在这种设备上的on device 模型推理计算有了额外的优化途径，并减轻了CPU的压力。同时NVIDIA
+也为其面向移动端的ARM 架构芯片提供了GPU 和Cuda 支持。但是这些额外的专门硬件的支持网络模型推理计算的方案，局限性
+也是显而易见的，即受到硬件本身的局限，不具备通用性。在实现可移植，强适应性，高效率的计算密集应用下，NEON还是
+目前最优的选择。
+
+在细节上实现高效的NEON指令的调用以及调度对于在ARM 架构设备上的高效智能计算具有着至关重要的意义。在实现量化的
+快速卷积过程中，本作遵循了以下优化原则：
+
+\begin{itemize}
+    \item 连续的计算指令之间不得存在数据依赖。某些计算指令，比如乘累加，的操作延时（latency）比较高, 为了减少指令等待时间，
+    需要避免将当前指令的目标寄存器用作下一条指令的源寄存器。在实现中，这里将 vld(数据加载)， vmlal（乘累加），st（数据写出）
+    等操作在调度的过程中实现第一阶段通过多个vld 指令加载各项所需的数据，第二阶段 通过乘累加操作计算相互独立的矢量计算，这里
+    每个乘累加操作需要有各自独立的累加器，否则累加过程会存在data dependence 造成指令stall。第三 阶段再将乘累加的结果写出。
+    \item NEON/FPU是一个独立的处理单元，Load/Store Unit也是一个独立处理单元，两个单元可以并行执行。Load/Store Unit可以在
+    加载到第一个数据的时候立即把数据forward给NEON/FPU，这样在只有一条VLDM指令时，只需要引入1个CPU cycles的延迟了。
+    这就提示我们通过合理的打散VLDM指令并和NEON/FPU指令交织（interleave），可以提升指令执行的并行度，并继 续提升软件的性能。
+    \item NEON指令执行计算的过程中不得出现条件分支。NEON指令集中没有分支跳转指令。 当需要跳转时，使用ARM的跳转指令。 在ARM
+    处理器中，分支预测技术被广泛使用。 但是一旦分支预测失败，那么惩罚就会很高。 因此，最好避免使用跳转说明。
+\end{itemize}
 
 \section{Winograd 算法数值稳定性}
 
@@ -161,3 +250,21 @@ Winograd F(6, 3)                       & 93.11                       & 11.41    
     0  & 4 &  0  & -5 &  0&  1
   \end{pmatrix}
 \end{align}
+
+\section{实验验证}
+
+这一部分验证本文中实现的整数Winograd 快速卷积在嵌入式设别上的有效性，
+包括
+\begin{itemize}
+  \item 针对单个卷积操作本身的执行效率，测量不同尺度规模的卷积输入下
+    \begin{itemize}
+        \item 该卷积实现同对应的全精度Winograd快速卷积的加速效果, 包括执行效率和内存开销(对照组为NNPACK实现)
+        \item 该卷积实现同基于GEMM卷积方法的整数卷积效率对比(对照组为QNNPACK实现)
+    \end{itemize}
+  \item 针对于由此卷积操作构成的卷积网络在特定的视觉任务上的的执行性能和效率
+    \begin{itemize}
+        \item 同全精度网络的执行效率和准确率作对比加速效果存储开销和数值精度
+        \item 同支持量化卷积计算的模型推理框架（TensorFlow lite， PyTorch Mobile）对比实现的准确率与加速效果
+    \end{itemize}
+
+\end{itemize}
