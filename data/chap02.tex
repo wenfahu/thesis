@@ -5,7 +5,7 @@
 卷积是在深度学习和图像处理中最为常用的一种操作，直观而言，卷积神经网络中的卷积操作
 将卷积核在图像上滑窗，并这个位置计算卷积核与对应的图像输入中的点积并输出到对应的位置。
 
-卷积核大小为$k_1xk_2$的卷积操作作用于大小为$MxN$的矩阵的直接卷积算法具有$O（MNk1_k_2$
+卷积核大小为$k_1xk_2$的卷积操作作用于大小为$MxN$的矩阵的直接卷积算法具有$O（MNk_1k_2$
 的计算复杂度，而对于存储的复杂度则为$O（MN）$。因此，从理论上讲，像GEMM（矩阵乘法，也称为
 Dense Layer， 线性层(Linear layer)或仿射层(Affine Layer)）一样，，卷积是受计算限制
 (compute bounded)的操作不是为内存限制(memory bouned)的操作。
@@ -14,7 +14,9 @@ Dense Layer， 线性层(Linear layer)或仿射层(Affine Layer)）一样，，�
 具体来说，这意味着通过使用寄存器分块（register blocking）和缓存分块（cache blocking）
 技术将数据保留在CPU缓存中，与单纯的实现相比，我们可以大大提高CPU性能。
 
-同时工作\cite{Zhang2018HighPZ} 则综合考虑到硬件的矢量寄存器，FMA （fused multiply-add）指令,
+同时工作
+%\cite{Zhang2018HighPZ}
+则综合考虑到硬件的矢量寄存器，FMA （fused multiply-add）指令,
 加载/储存结构，register blocking， cache blocking，多线程并行，数据分布方式（data layout）
 等等角度入手分析，实现可以最大限度利用硬件计算资源的直接卷积算法，证明没有额外内存需求的直接
 卷积算法在效率上并不亚于各种需要额外内存支持的优化卷积算法，甚至会比基于GEMM 的方法更为高效。
@@ -27,7 +29,9 @@ Dense Layer， 线性层(Linear layer)或仿射层(Affine Layer)）一样，，�
 用于实现高效矩阵乘法的很多方法可以借鉴被用于提高卷积操作的效率。Cache blocking 和 Register
 blocking 是常用的用于实现高效矩阵乘法的两种策略，值得注意的是，这两种策略并不改变矩阵乘法的
 算法复杂度$O(n^3)$，而是从硬件角度考虑，充分利用到硬件的计算资源，对矩阵乘法实现硬件友好（hardware
-friendly）的重新调度。 工作\cite{Georganas2018AnatomyOH} 中的直接卷积方法实现则是借鉴了
+friendly）的重新调度。 工作
+\cite{Georganas2018AnatomyOH}
+中的直接卷积方法实现则是借鉴了
 这一对于矩阵乘法的优化策略，不改变卷积计算本身的复杂度，而是对于直接卷积的实现考虑更加硬件
 友好的实现:
 
@@ -344,7 +348,7 @@ Winograd minimal filtering算法是在信号处理中常用的一类快速算法
 
 用矩阵乘法的形式表示这一卷积过程
 
-\begin{align}
+\[
 \label{eq:f2x3}
   \begin{pmatrix}
     k_0 & k_1 & k_2 & k_3 & k_4 & k_5 & k_6 & k_7 & k_8 & k_9 & k_10 \\
@@ -352,7 +356,6 @@ Winograd minimal filtering算法是在信号处理中常用的一类快速算法
     k_4 & k_5 & k_6 & k_7 & k_8 & k_9 & k_10 & k_11  & k_12 & k_13 & k_14 \\
     k_5 & k_6 & k_7 & k_8 & k_9 & k_10 & k_11 & k_12 & k_13 & k_14 & k_15
   \end{pmatrix}
-
   \begin{pmatrix}
     w_0 \\
     w_1 \\
@@ -365,14 +368,13 @@ Winograd minimal filtering算法是在信号处理中常用的一类快速算法
     w_8
   \end{pmatrix}
   = 
-  \begin{align}
+  \begin{pmatrix}
     r_0 \\
     r_1 \\
     r_2 \\
     r_3
-  \end{align}
-
-\end{align}
+  \end{pmatrix}
+\]
 
 类比于 1D 场景下的处理方法，这里可以得到相似的处理形式，不同点在于，1D 场景下简化
 的乘法\ref{eq:winograd_mul}中表示的值均为Scalar，而2D场景下对应的值为一个子矩阵，
@@ -441,7 +443,7 @@ Winograd minimal filtering算法是在信号处理中常用的一类快速算法
 这些计算库才是真正执行深度模型计算的work horse。而计算库的实现也是同执行运算
 的硬件平台密切相关的。就CPU上的量化计算而言，在Intel x86芯片架构的桌面和服务器端，
 Intel MKL(Math Kernel Library) 提供了各种针对硬件高度优化的数学计算支持，同时
-也包括整数型的矩阵乘法和卷积实现（https://oneapi-src.github.io/oneDNN/cpu_cnn_inference_int8_cpp.html），
+也包括整数型的矩阵乘法和卷积实现
 而且同时针对于近些年来普遍应用于深度学习视觉任务中的小尺度卷积而言，在Intel
 硬件平台则由LIBXSMM\cite{Heinecke2016LIBXSMMAS} 实现针对性的计算优化。顾名思义，
 这里的XSMM 即指在x86 平台的小尺度矩阵乘法计算（Small Matrix Multiplication）而在
