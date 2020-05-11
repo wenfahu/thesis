@@ -5,24 +5,33 @@
 \begin{abstract}
   边缘设备对于智能计算的需求在随着边缘设备计算能力的提升及其因数据的
   丰富越来越复杂的 应用需求而不断提升，结合物联网（IOT）与人工智能（AI）
-  的应用 AIoT 也即将对很多领域实现重定义。而边缘设备本身有限的计算能力
-  和当前机器学习模型，特别是深度神经网络在边缘设别上针对性的计算优化
-  依然是实现边缘智能的一大难点。 
+  的应用 AIoT 也即将对很多领域实现重定义。
+  目前移动端最为广泛使用的芯片架构为ARM Cortex-A，相比于计算资源充足的
+  桌面端和服务端，该平台的计算能力相当有限。而边缘设备有限的计算能力
+  和当前机器学习模型，特别是深度神经网络，庞大的计算需求之间的矛盾成为
+  在边缘设备上部署智能应用的一大难点。 
+
   对于视觉任务而言，卷积神经网络是当前最为主要的模型，而其中的计算瓶颈
-  便是卷积操作，加速卷积的实现，是加速卷积网络模型应用在边缘设备上执行
-  效率的最为有效也最为根本的手段。
+  便是卷积操作，而3x3 卷积是目前卷积网络中占比最高的卷积操作。加速卷积
+  的实现，特别是3x3 卷积，是加速卷积网络模型并且实现其在边缘设备上部署
+  最为有效也最为根本的手段。近年来被应用于卷积网络计算的Winograd 卷积
+  是目前实现中运算复杂度最低的卷积算法，并且特别适用于3x3 卷积这种小尺度的卷积。
 
-  Winograd 卷积是目前在卷积实现的复杂度而言最优的卷积算法，受制于其大尺度
-  卷积计算场景下数值不稳定的缺陷，一般只应用于小尺度的卷积中，即卷积核3x3，
-  单个卷积操作输出为2x2 或 4x4 的场景。而近年来卷积神经网络的设计趋势
-  正是使用小卷积核的卷积操作。同时可以应用在移动设备的神经网络模型往往
-  参数规模会相对较低，在经过量化处理后，参与计算的参数甚至可以满足于移动
-  设备芯片的缓存中，可以有效提高在边缘设备的计算吞吐。
+  同时，另外一方面，模型量化方法近年来日臻完善。 通过量化方法, 以低精度
+  数据表示的网络模型仍然可以在视觉任务上有着较高的准确率，同时
+  实现模型的压缩，运行时计算吞吐量的提升。
 
-  本文针对目前最为主流的移动端CPU 计算架构 ARMv8-A 平台，通过结合神经
-  网络量化推理，Winograd 快速卷积算法，以及二者对于移动端硬件条件的
-  针对性优化，实现卷积操作和卷积神经网络在实际硬件上的效率提升。
-
+  结合上述两点，实现量化卷积网络的Winograd卷积，将有效提升卷积网络在
+  移动端的部署效率。而当前在移动端最为主流的卷积实现方法为Im2Col 算法，
+  Winograd 算法相比之下有着明显的算法复杂度优势。本文针对Winograd整数
+  卷积的优化问题，提出了局部区域多通道Winograd卷积算法，在计算资源
+  有限的ARM设备上，充分利用了Winograd卷积的空间局部性以及通道可并行化，
+  有效解决了整数卷积操作在嵌入式设备的加速问题；其次，为了进一步提升
+  整数卷积的速度，本文利用ARM NEON指令的高效并行计算能力，针对于轻量化
+  网络的参数特征，提出了缓存友好、计算吞吐高的中小规模整数矩阵乘法，
+  进一步实现了计算效率的优化；最后，本文将优化的卷积算法实现集成入
+  计算内核库QNNPACK，同TensorFlow Lite量化卷积计算对比，同等参数配置
+  的卷积计算操作，在ARM Cortex A72 设备上实现了2倍加速效果。
 
   % 关键词用“英文逗号”分隔
   \thusetup{
@@ -32,41 +41,19 @@
 
 \begin{abstract*}
 
-  The demand for intelligent computing of edge devices is increasing 
+  The demand for intelligent computing on edge devices is increasing 
   with the improvement of computation capacity of edge devices and 
   the demand for more and more complex applications due to the 
-  richness of data. The application of AIoT combining IOT and 
-  artificial intelligence (AI) is also redefining many areas. 
-  However, the limited computing power of the edge device itself 
-  and the current machine learning model, especially the computation 
-  optimization of the deep neural network on the edge of the targeted
-  devices is still a major difficulty in achieving edge intelligence.
+  richness of data. 
+  The application of AIoT, which combines the Internet of Things (IOT) and artificial intelligence (AI), is also about to redefine many fields. At present, the most widely used chip architecture of the mobile devices is ARM Cortex-A. Compared with the desktop and server with sufficient computing resources, the computing capability of the platform is quite limited. The contradiction between the limited computing capability of edge devices and huge computation demand of current machine learning models, especially deep neural networks,  has become a major difficulty in deploying intelligent applications on edge devices.
 
-  For visual tasks, the convolutional neural network is currently the 
-  most important model, and the computational bottleneck is the 
-  convolution operation. Accelerating the implementation of 
-  convolution is the most effective in accelerating the execution 
-  efficiency of the convolutional network model on edge devices.
-  It is also the most fundamental means.
+  For visual tasks, the convolutional neural network is currently the dominated model, and its computational bottleneck is the convolution operation. Moreover, the 3x3 convolution is the mostly used convolutional operation in the current convolution network design. The implementation of efficient convolution, especially 3x3 convolution, is the most effective and fundamental means to accelerate the convolutional network model and implement its deployment on edge devices. In recent years, Winograd convolution, which has been widely used in digital signal processing, is applied to the computation of convolutional networks and proves to be the convolution algorithm with the lowest computational complexity in the current implementation. Also Winograd convolution is particularly suitable for small-scale convolution, such as the widely used 3x3 convolution.
 
-  Winograd convolution is currently the best convolution algorithm 
-  in terms of the complexity of convolution implementation. It is 
-  subject to the defect of numerical instability in its large-scale 
-  convolution calculation scenario, and is generally only used in 
-  small-scale convolutions In recent years, the design trend of 
-  convolutional neural networks is the convolution operation using 
-  small convolution kernels. At the same time, the neural network 
-  model that can be applied to mobile devices often has a relatively
-  small parameter size. After quantization, the parameters involved 
-  in the calculation can even be satisfied in the cache of the 
-  mobile device chip, which can effectively improve the computing 
-  throughput of the edge device.
+ On the other hand, model quantification methods have become more sophisticated in recent years. Through the quantization approach, the network model represented by low-precision data can still have a high accuracy in visual tasks. Compressed model size and increased computation throughput make quantized models ideal to be deployed on mobile devices.
 
-  This article aims at the most mainstream mobile CPU computing 
-  architecture ARMv8-A platform, through the combination of neural
-  network quantitative reasoning, Winograd fast convolution algorithm, 
-  and optimization for the targeted hardware devices, to achieve 
-  improved efficiency of convolution operations on real hardware.
+  To conclude,  the implementation of quantized Winograd convolution will effectively improve the deployment efficiency of the convolutional network on the mobile devices. At present, the most mainstream implementation of convolution on the mobile devices is the Im2Col algorithm, and the Winograd algorithm has obvious advantages in algorithm complexity in comparison. In this paper, a spatially local multi-channel Winograd convolution algorithm is proposed for the optimization problem of Winograd integer convolution. On ARM devices with limited computing resources, the spatial locality of Winograd convolution and the parallelization of channel dimension are fully utilized to
+effectively accelerated quantized convolution on embeded devices; Secondly, in order to further improve the speed of integer convolution, this paper utilizes the efficient parallel computing capability of ARM NEON instructions and
+addressing the parameter characteristics of lightweight networks, proposes cache-friendly and high computational throughput small-to-medium-scale integer matrix multiplication further optimizes the calculation efficiency. Finally, this paper integrates the optimized convolution algorithm into the computation kernel library QNNPACK. Compared with the TensorFlow Lite quantization convolution computation, the convolution operation with the same parameter configuration, achieved a 2x acceleration on the ARM Cortex A72 device.
   \thusetup{
     keywords* = {Winograd, ARM NEON, Convolution, Quantization, GEMM},
   }

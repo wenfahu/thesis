@@ -13,7 +13,7 @@
   %   可使用“\\”命令手动控制换行
   %
   title  = {量化快速卷积方法在ARM设备上的优化研究},
-  title* = {Efficient Winograd Convolution with Integer Arithmetic on Mobile Devices},
+  title* = {Research on Optimization of Quantitative Fast Convolution Method on ARM Devices},
   %
   % 学位
   %   1. 学术型
@@ -108,6 +108,7 @@
 
 % 表格中的反斜线
 \usepackage{diagbox}
+\usepackage{algorithm2e}%
 
 % 确定浮动对象的位置，可以使用 H，强制将浮动对象放到这里（可能效果很差）
 \usepackage{float}
@@ -123,6 +124,8 @@
 % 定理类环境宏包
 \usepackage[amsmath,thmmarks,hyperref]{ntheorem}
 
+\usepackage{mathtools}
+
 % 给自定义的宏后面自动加空白
 % \usepackage{xspace}
 
@@ -130,6 +133,7 @@
 \def\cmd#1{\cs{\expandafter\cmd@to@cs\string#1}}
 \def\cmd@to@cs#1#2{\char\number`#2\relax}
 \DeclareRobustCommand\cs[1]{\texttt{\char`\\#1}}
+\DeclarePairedDelimiter{\ceil}{\lceil}{\rceil}
 
 \newcommand*{\meta}[1]{{%
   \ensuremath{\langle}\rmfamily\itshape#1\/\ensuremath{\rangle}}}
