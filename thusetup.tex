@@ -33,7 +33,7 @@
   %   3. 本科生不需要填写
   %
   degree-name  = {工程硕士},
-  degree-name* = {Master of Science in Engineering},
+  degree-name* = {Master of Engineering},
   %
   % 培养单位
   %   填写所属院系的全名
@@ -108,7 +108,11 @@
 
 % 表格中的反斜线
 \usepackage{diagbox}
-\usepackage{algorithm2e}%
+% \usepackage{algorithm2e}%
+\usepackage{algorithm}
+\usepackage{algorithmicx}
+\usepackage{algpseudocode}
+\usepackage{varwidth}
 
 % 确定浮动对象的位置，可以使用 H，强制将浮动对象放到这里（可能效果很差）
 \usepackage{float}
@@ -158,3 +162,4 @@
 
 % hyperref 宏包在最后调用
 \usepackage{hyperref}
+\usepackage[flushleft]{threeparttable}

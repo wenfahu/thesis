@@ -1,13 +1,13 @@
 % !TeX root = ../main.tex
 
-\chapter{相关工作}
+\chapter{相关研究综述}
 
 卷积是在深度学习和图像处理中最为常用的一种操作，直观而言，卷积神经网络中的卷积操作可以理解为
 将卷积核在图像上滑窗，并这个位置计算卷积核与对应的图像输入位置像素的点积并输出到对应的位置。
 
-卷积核大小为$k_1xk_2$的卷积操作作用于大小为$MxN$的矩阵的直接卷积算法具有$O(MNk_1k_2)$
+卷积核大小为$k_1 \times k_2$的卷积操作作用于$M \times N$的矩阵的直接卷积算法具有$O(MNk_1k_2)$
 的计算复杂度，而对于存储的复杂度则为$O(MN)$。因此，从理论上讲，像GEMM（矩阵乘法，也称为
-Dense Layer， 线性层(Linear layer)或仿射层(Affine Layer)）一样，，卷积是受计算限制
+Dense Layer， 线性层(Linear layer)或仿射层(Affine Layer)）一样，卷积是受计算限制
 (compute bounded)的操作不是为内存限制(memory bouned)的操作。
 同时，对于多通道的图像输入，内存复杂度变为$O(MNC)$，计算复杂度变为$O(MNCk_1k_2)$。
 
@@ -17,7 +17,7 @@ Dense Layer， 线性层(Linear layer)或仿射层(Affine Layer)）一样，，�
 \subsection{直接卷积方法}
 
 由于通用矩阵乘法（GEMM）和卷积都是受到计算资源限制的操作（computation bounded operation）,
-用于实现高效矩阵乘法的很多方法可以借鉴被用于提高卷积操作的效率。Cache blocking 和 Register
+用于实现高效矩阵乘法的很多方法可以借鉴用于提高卷积操作的效率。Cache blocking 和 Register
 blocking 是常用的用于实现高效矩阵乘法的两种策略，值得注意的是，这两种策略并不改变矩阵乘法的
 算法复杂度$O(n^3)$，而是从硬件角度考虑，充分利用到硬件的计算资源，对矩阵乘法实现硬件友好（hardware
 friendly）的重新调度。 工作
@@ -35,23 +35,43 @@ PxQ，以及卷积操作由四维张量所表示的权重，各个维度的尺�
 于是直接卷积算法的处理过程中，如Algorithm \ref{algo:direct-conv}所示，具有6重循环，其中输入的特征
 为I，卷积的权重为W，而输出的特征为 O 
 
+% \begin{algorithm}
+%   \caption{直接卷积实现}
+%   \KwIn{Input image $I$, Kernel $W$}
+%   \KwOut{ Ouptut feature $O$}
+%   \For{ $k$ \gets 1 \KwTo $K$}{
+%     \For{ $c$ \gets 1 \KwTo $C$}{
+%       \For{ $p$ \gets 1 \KwTo $P$}{
+%         \For{ $q$ \gets 1 \KwTo $Q$}{
+%           \For{ $r$ \gets 1 \KwTo $R$}{
+%             \For{ $s$ \gets 1 \KwTo $S$}{
+%                 $O_{n,k,p,q} += I_{n,c,p+r,q+s} \times W_{k,c,r,s}$
+%               }
+%             }
+%           }
+%         }
+%       }
+%     }
+%   \label{algo:direct-conv}
+% \end{algorithm}
+
 \begin{algorithm}
-  \caption{直接卷积实现}
-  \KwIn{Input image $I$, Kernel $W$}
-  \KwOut{ Ouptut feature $O$}
-  \For{ $k$ \gets 1 \KwTo $K$}{
-    \For{ $c$ \gets 1 \KwTo $C$}{
-      \For{ $p$ \gets 1 \KwTo $P$}{
-        \For{ $q$ \gets 1 \KwTo $Q$}{
-          \For{ $r$ \gets 1 \KwTo $R$}{
-            \For{ $s$ \gets 1 \KwTo $S$}{
-                $O_{n,k,p,q} += I_{n,c,p+r,q+s} \times W_{k,c,r,s}$
-              }
-            }
-          }
-        }
-      }
-    }
+  \begin{algorithmic}
+    \For{ $k \gets 1 \to K$}
+      \For{ $c \gets 1 \to C$}
+        \For{ $p \gets 1 \to P$}
+          \For{ $q \gets 1 \to Q$}
+            \For{ $r \gets 1 \to R$}
+              \For{ $s \gets 1 \to S$}
+                  \State $O_{n,k,p,q} += I_{n,c,p+r,q+s} \times W_{k,c,r,s}$
+              \EndFor
+            \EndFor
+          \EndFor
+        \EndFor
+      \EndFor
+    \EndFor
+  \end{algorithmic}
+  \caption{直接卷积算法}
   \label{algo:direct-conv}
 \end{algorithm}
 
@@ -63,41 +83,14 @@ PxQ，以及卷积操作由四维张量所表示的权重，各个维度的尺�
 的子块。比如上述的AVX 512 矢量计算中，需要将计算最内层的数据分为多个16个32位浮点数组成的小块。
 除此之外，在寄存器层面，可以
 使用 register blocking 技术实现寄存器中的数据复用，并减小L1 缓存中的数据传输压力，以期
-减小操作延时。\cite{Georganas2018AnatomyOH} 中将 register blocking 应用在输出特征的
+减小操作延时。工作\cite{Georganas2018AnatomyOH} 中将 register blocking 应用在输出特征的
 空间维度层面上，因此在空间维度的迭代过程中，其中的每个点的值均可以独立计算。
-在综合了寄存器角度的优化策略之后，即矢量化（vectorizatoin）和 register blocking，
+在综合了寄存器角度的优化策略之后，即矢量化（vectorization）和 register blocking，
 \cite{Georganas2018AnatomyOH} 对于直接卷积算法提出了如Algorithm\ref{algo:opt_direct_conv}
 所示的优化，这里 $C_{o,b}$ 表示经过Blocking 方法实现的输出通道量的分块，算法中针对$W$ 的表示类似。
 
-\begin{algorithm}
-  \caption{优化直接卷积算法}
-  \KwIn{Input image $I$, Kernel $W$, stride $s$}
-  \KwOut{ Ouptut feature $O$}
-  \For{ $\tilde{j} \gets 1$ \KwTo $C_o / C_{o,b}$}{
-    \For{ $\tilde{i} \gets 1$ \KwTo $C_i / C_{i,b}$}{
-      \For{ $l \gets 1$ \KwTo $H_o$}{
-        \For{ $\tilde{k} \gets 1$ \KwTo $W_o / W_{o,b}$}{
-          \For{ $n \gets 1$ \KwTo $H_f$}{
-            \For{ $m \gets 1$ \KwTo $W_f$}{
-              \For{ $ii \gets 1$ \KwTo $C_{i, b}$}{
-                \For{ $kk \gets 1$ \KwTo $W_{o,b}$}{
-                  \For{ $jj \gets 1$ \KwTo $C_{o, b}$}{
-                    $O_{\tilde{j}C_{o,b}+jj, \tilde{k}W_{o,b}+kk,l} +=
-                    I_{\tilde{i}C_{i,b}+ii,s\tilde{k}W_{o,b}+kk+m,ls+n} \times
-                    W_{\tilde{i}C_{i,b}+ii,\tilde{j}\times C_{a,b}+jj,m,n}$
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    }
-  }
-  \label{algo:opt_direct_conv}
-\end{algorithm}
 
-直接卷积乘法无需考虑额外的变换，也没有额外的储存需求，因而在存储角度考虑实际上是相当高效的，
+直接卷积方法无需考虑额外的变换，也没有额外的储存需求，因而在存储角度考虑实际上是相当高效的，
 而且直接卷积算法也不对卷积本身的设定有任何的预设，可以直接应用于各种类型的卷积操作。而另外一方面，
 直接卷积算法的缺陷也同样是显而易见的，这一实现实际上对于缓存相当不友好。对于相当常用的 3x3 卷积
 而言，如果输入的数据类型使用32位表示，在计算第一行中的输入的3个值的过程中会加载与其位于同一缓存
@@ -105,26 +98,84 @@ PxQ，以及卷积操作由四维张量所表示的权重，各个维度的尺�
 中的值加载到缓存中，而直到第三行的数据操作完毕之后，由于缓存的容量一般很小，第一行的数据已经从
 缓存中抹去了，而这时的计算却正好需要这些数据。 这些存储访问相关的问题都会限制计算密度的最大化和计算资源的最有效利用。
 
+\begin{algorithm}
+  \begin{algorithmic}
+    \For{ $\tilde{j} \gets 1 \to C_o / C_{o,b}$}
+      \For{ $\tilde{i} \gets 1 \to C_i / C_{i,b}$}
+        \For{ $l \gets 1 \to H_o$}
+          \For{ $\tilde{k} \gets 1 \to W_o / W_{o,b}$}
+            \For{ $n \gets 1 \to H_f$}
+              \For{ $m \gets 1 \to W_f$}
+                \For{ $ii \gets 1 \to C_{i, b}$}
+                  \For{ $kk \gets 1 \to W_{o,b}$}
+                    \For{ $jj \gets 1 \to C_{o, b}$}
+                      \State \begin{varwidth}[t]{\linewidth}
+                      $O_{\tilde{j}C_{o,b}+jj, \tilde{k}W_{o,b}+kk,l}$ += \par
+                      \hskip\algorithmicindent $I_{\tilde{i}C_{i,b}+ii,s\tilde{k}W_{o,b}+kk+m,ls+n} \times $ \par
+                      \hskip\algorithmicindent $W_{\tilde{i}C_{i,b}+ii,\tilde{j}\times C_{a,b}+jj,m,n}$
+                      \end{varwidth}
+                    \EndFor
+                  \EndFor
+                \EndFor
+              \EndFor
+            \EndFor
+          \EndFor
+        \EndFor
+      \EndFor
+    \EndFor
+  \end{algorithmic}
+  \caption{优化直接卷积算法}
+  \label{algo:opt_direct_conv}
+\end{algorithm}
+
+% \begin{algorithm}
+%   \caption{优化直接卷积算法}
+%   \KwIn{Input image $I$, Kernel $W$, stride $s$}
+%   \KwOut{ Ouptut feature $O$}
+%   \For{ $\tilde{j} \gets 1$ \KwTo $C_o / C_{o,b}$}{
+%     \For{ $\tilde{i} \gets 1$ \KwTo $C_i / C_{i,b}$}{
+%       \For{ $l \gets 1$ \KwTo $H_o$}{
+%         \For{ $\tilde{k} \gets 1$ \KwTo $W_o / W_{o,b}$}{
+%           \For{ $n \gets 1$ \KwTo $H_f$}{
+%             \For{ $m \gets 1$ \KwTo $W_f$}{
+%               \For{ $ii \gets 1$ \KwTo $C_{i, b}$}{
+%                 \For{ $kk \gets 1$ \KwTo $W_{o,b}$}{
+%                   \For{ $jj \gets 1$ \KwTo $C_{o, b}$}{
+%                     $O_{\tilde{j}C_{o,b}+jj, \tilde{k}W_{o,b}+kk,l} +=
+%                     I_{\tilde{i}C_{i,b}+ii,s\tilde{k}W_{o,b}+kk+m,ls+n} \times
+%                     W_{\tilde{i}C_{i,b}+ii,\tilde{j}\times C_{a,b}+jj,m,n}$
+%                   }
+%                 }
+%               }
+%             }
+%           }
+%         }
+%       }
+%     }
+%   }
+%   \label{algo:opt_direct_conv}
+% \end{algorithm}
+
 \subsection{基于GEMM 的卷积实现}
 
 \subsubsection{Im2col （Image to Columns）}
 
 Im2col(Image Block to Column)是当前最流行的CPU卷积方案。这一卷积实现方法自Caffe\cite{Jia2014CaffeCA}起，便在
 卷积神经网络计算的实现中有着相当广泛的支持，而也正是caffe使得基于GEMM的卷积实现方法得以流行。
-这一方法最早建于\cite{Chellapilla2006HighPC} 它依赖于经过数十年优化的矩阵乘法（GEMM），以充分利用CPU缓存。
+这一方法最早见于\cite{Chellapilla2006HighPC} 它依赖于经过数十年优化的矩阵乘法（GEMM），以充分利用CPU缓存。
 这样的优点是计算速度更快，但会占用更多的内存。 使用im2col运算将输入图像转换为矩阵，
 然后将该矩阵与变换后的卷积核相乘。 最后，再使用col2im操作将这个相乘后的矩阵重新转换为图像。
 
 从微观角度来看，卷积操作基本上就是卷积核参数同移动窗口所选择的同卷积核尺度相同的局部区域
 之间的点积（dot product）。Im2col 的基本想法就在于将所有可能的窗口在内存中展开，然后
 使用矩阵乘法实现点积，毕竟点积和矩阵乘法的基本流程都是对应位置乘积的和（sum of element-wise
-product）。从而可以用更大的内存消耗为代价而换取实现的简化和计算加速，
+product）。从而可以用更大的内存消耗为代价而换取实现的简化和计算加速。
 
 简而言之，im2col技术，每个窗口截取，将其展平，然后将它们堆叠为矩阵中的列。 再将内核展平
 为行向量并在两者之间进行矩阵乘法，则在输出reshape后可以获得完全相同的结果。
 \begin{figure}
 	\centering
-	\includegraphics[width=0.8\columnwidth]{Im2col.png}
+	\includegraphics[width=0.8\columnwidth]{Im2Col2}
 	\caption{Im2Col 方法}
 	\label{fig:im2col}
 \end{figure}
@@ -176,7 +227,7 @@ Im2col 方法中将输入的矩阵中的一个子块做降维，同Im2col方法�
 如图\ref{fig:mec} 中所示，对于一个 7x7 的输入，和3x3 的卷积核，这里需要实现降维的对象是
 输入矩阵中的3列数据，记输入为 I，则这里需要将 $ I[0:7, 0:3] $ 这一区域中的数据平摊为一维，
 即图中的第二步所示，依次按照滑窗实现输入的按照列的降维，在stride 为1 的情形下，这里在第二步
-得到了降维后的 5 个一维向量，构成一个 5x 21的矩阵，而在实现矩阵乘法的过程中，则又需要
+得到了降维后的5 个一维向量，构成一个 5x21的矩阵，而在实现矩阵乘法的过程中，则又需要
 对于这个 5x21 的矩阵做划分为5x9 的子矩阵，在划分的过程中每向右移动三个单位（横向stride 乘
 卷积核宽度）取一个子矩阵。每一个子矩阵和平摊（flatten）为一维向量的卷积核之间的乘积构成输出
 的一行。 尽管这一过程中需要更多的矩阵乘法调用，但实际的乘法/加法操作则同im2col方法一致。
@@ -220,13 +271,13 @@ DFT卷积的结果是一个循环卷积（circular convolution/ cyclic convoluti
 \end{itemize}
 
 实数域中的信号的 FFT 变换是具有 Hermitian 对称性（Hermitian symmetry）的， 即实数矩阵在傅里叶变换之后的矩阵同其共轭转置矩阵（conjugate transpose）是相等的，
-这使得在 FFT 卷积方法中的矩阵乘法部分的实际有效乘法量可以进一步减半。一个尺寸为 $m x m$ 的实数值矩阵的离散傅里叶变换由于 Hermitian 对称性可以用 $ m x （floor(\frac{1}{2} + 1)） $ 
+这使得在 FFT 卷积方法中的矩阵乘法部分的实际有效乘法量可以进一步减半。一个尺寸为 $m \times m$ 的实数值矩阵的离散傅里叶变换由于 Hermitian 对称性可以用 $m \times(floor(\frac{1}{2} + 1))$ 
 个复数来表示。同时又由于 $ U^H V^H = ( UV )^H $，矩阵乘法结果中的一半元素的值（上/下三角）可以通过取已计算值的共轭获得。
 
 \paragraph{复数乘法计算}
-复数计算在信号处理中有着广泛的应用，然而不幸的是，很多现代硬件在底层的指令上则缺少直接计算复数计算的支持，这使得复数计算的实现不得不面临着额外的挑战和付出。
+复数计算在信号处理中有着广泛的应用，然而不幸的是，很多现代硬件在底层的指令上则缺少复数计算的支持，这使得复数计算的实现不得不面临着额外的挑战和付出。
 而针对于ARM平台，尽管在ARMv8.2指令集（ISA） 之后添加了 FCADD (Floating-point Complex Add), FCMLA (Floating-point Complex Multiply Accumulate) 操作，
-然而实现这一指令集的芯片微架构（microarchitecture）并不占据主流，主要集中在高端智能收集芯片上，比如苹果应用于iPhone X上的A11芯片及其之后的应用于iPhone XS系列的
+然而实现这一指令集的芯片微架构（microarchitecture）并不占据主流，主要集中在高端智能手机芯片上，比如苹果应用于iPhone X上的A11芯片及其之后的应用于iPhone XS系列的
 A12芯片以及iPhone 11 的 A13芯片，在很多的嵌入式设备场景下的low profile的计算资源场景下，指令级别的复数操作支持仍然是缺失的。
 
 一般的复数乘法中，一对复数相乘需要四次复数乘法，即
@@ -236,7 +287,7 @@ A12芯片以及iPhone 11 的 A13芯片，在很多的嵌入式设备场景下的
 (u_r + i u_i)(v_r + i v_i) = u_r v_r - u_i v_i + i ( u_i v_r + u_r v_i )
 \end{align}
 
-而对于\ref{eq:complex_mul} 稍加变换既可以得到复数乘法的快速算法，该方法只需要三个实数乘法。
+而对于\ref{eq:complex_mul} 稍加变换即可以得到复数乘法的快速算法，该方法只需要三个实数乘法。
 
 \begin{align}
 \label{eq:complex_mul_fast}
@@ -251,7 +302,7 @@ u_b = u_r ( v_i - v_r )\\
 u_c = u_i ( v_r + v_i )
 \end{align}
 
-这一方法，通过使用更多的加法实现在复数乘法计算过中乘法的减少 。
+这一方法，通过使用更多的加法实现在复数乘法计算中乘法的减少 。
 
 \paragraph{快速复数乘法在傅里叶卷积中的应用}
 
@@ -259,10 +310,10 @@ u_c = u_i ( v_r + v_i )
 复数张量 $V = V_r + i V_i $, 张量 $V_i - V_r$ 和 $V_r + V_i$ 可以在内核变换期间计算， 并与 $V_r$ 一起存储（不必存储$V_i$ ）。这里每个变换前的实数域的输入
 对应于变换后的三个实数值，而不是直观理解上的每个变换后的值对应两个用来表示复数实部和虚部的两个实数。 然后，可以用三个独立的实值张量的元素间乘积替换复数张量的
 元素间乘积. 而由此计算得到的三个 实数张量则可以在计算逆变换的过程中被隐式的转换为单个实数张量。总体来讲，快速复数乘法的实现，可以使得原本的复数域中的一个矩阵间
-乘法转换为3个实数域中的矩阵乘法， 同直接计算复数乘法相比，可以将乘法的操作数减少 25\%.
+乘法转换为3个实数域中的矩阵乘法， 同直接计算复数乘法相比，可以将乘法的操作数减少 25\%。
 
-FFT 卷积在执行计算的过程中需要将权重填充到和输入同等大小，这回导致额外并且不必要的内存负担，特别是在
-卷积核本身毕竟小的状态下。信号处理中对于这一问题也有着比较成熟的解决方案，即 overlap add 和 overlap save
+FFT 卷积在执行计算的过程中需要将权重填充到和输入同等大小，这会导致额外并且不必要的内存负担。而在
+卷积核本身毕竟小的状态下，这种额外开销的负面影响则更加明显。信号处理中对于这一问题也有着比较成熟的解决方案，即 overlap add 和 overlap save
 方法。切换到深度学习的场景下，可以实现对于输入的图像的切分，在每个小块上执行FFT 卷积，再将得到的结果
 通过类似overlap add / overlap save的方法拼凑为整个图像输入的结果。 但是，这样的方法还需要将内核权重
 填充到合适的大小（通常为2的幂）以达到最优性能。 即使将内核权重填充到架构寄存器大小的较小倍数（例如8或16）
@@ -435,14 +486,14 @@ Winograd 与 FFT 卷积中主要能够降低计算成本的一点在于，权重
 端到端的整数计算过程，而网络本身的权重参数仍然为浮点数，从而网络反向梯度更新仍然
 可以像普通的训练过程一样执行。
 
-\cite{Louizos2019RelaxedQF} 为了训练可以有效离散化而又不损失性能的网络，引入了
+工作\cite{Louizos2019RelaxedQF} 为了训练可以有效离散化而又不损失性能的网络，引入了
 可微分的量化过程。通过将权重上的连续分布和网络的激活转换为量化网格上的分类分布，
 可以实现可区分性。随后将它们放宽(relaxed)为连续值替代，从而可以进行基于梯度的
 有效优化。
 
 \subsection{模型量化计算实现支持}
 
-诸如 TensorRT，TensorFlow，PyTorch，MxNet等框架均在不同程度上具有了处理量化
+诸如 TensorRT，TensorFlow，PyTorch，MXNet等框架均在不同程度上具有了处理量化
 网络模型的能力。一些模型的计算过程中会包含量化和反量化操作，即量化计算的过程
 并不是端到端的，即网络中某个操作（通常是如全连接或者卷积这种计算密集型操作）
 的输入仍然是32位浮点数，在执行该操作之前，可以通过量化操作将对应的输入转换为
@@ -473,8 +524,8 @@ x86 桌面端的量化网络计算需求，而其中的卷积计算方法则是�
 类似的im2col 改进策略。
 
 GEMM 方法实现的卷积很大程度上依赖于高性能计算研究中对于
-矩阵乘法的优化，然而HPC 毕竟同深度学习模型推理之间是存在着不匹配的. 很多HPC 库
-并不提供针对于量化场景的相关计算，HPC 针对的场景往往时大规模的矩阵计算，甚至是
+矩阵乘法的优化，然而HPC 毕竟同深度学习模型推理之间是存在着不匹配的。很多HPC 库
+并不提供针对于量化场景的相关计算，HPC 针对的场景往往是大规模的矩阵计算，甚至是
 规模大到需要在分布式集群执行的计算，而没有针对于深度学习中的很多矩阵的计算，特别是
 近些年来的小尺度的矩阵的计算做优化，因而不能充分利用到深度网络权重矩阵的特性。
 

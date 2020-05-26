@@ -77,7 +77,7 @@ A76AE 微架构。
 因此在实现过程中，这里结合本文中的 Winograd 卷积实现设计的空间局部区域的独立性，在特征的输入
 变换，GEMM 实现，以及结果的输出变换中，对于整体的图像或者中间特征做了区域性的划分，并在这一层级
 上实现多线程的并行，保证每个单独的region 的处理都是独立的，并且向各个处理阶段对应的buffer 输出
-处理结果的过程中，各个region 所对应的地址空间避开处于同一cache line的情形。从而保证这一 regional wise
+处理结果的过程中，各个region 所对应的地址空间避免处于同一cache line的情形。从而保证这一 regional wise
 的 Winograd 算法实现在多线程并行下的高效性。
 
 
@@ -87,7 +87,7 @@ A76AE 微架构。
 
 矩阵中的每个值均以放射变换的方法（线性变换）通过比例因子和零点值被量化映射到低精度的表示，因此量化域(这里的实现为
 8为无符号整数)中的计算可以
-直接映射到实数域。比例因子和零点值被矩阵中的多个值所共享，即矩阵中的所有行使用相同的比例因此和零点。
+直接映射到实数域。比例因子和零点值被矩阵中的多个值所共享，即矩阵中的所有行使用相同的比例因子和零点。
 量化矩阵中的值 $x_r$可以通过如下简单的变换方式实现到实数矩阵中的值 $x_q$ 的变换。
 
 \begin{align}
@@ -95,7 +95,7 @@ A76AE 微架构。
 \end{align}
 
 这里的比例因子（scale factor） $a_scale$ 一般而言是一个浮点值，而参考在 \cite{Jacob2017QuantizationAT}
-对于比例因此的处理，按照上面的实数域和量化域的表示，实数域的值 $x_r, y_r, z_r$ 所对应的量化域中的值分别为
+对于比例因子的处理，按照上面的实数域和量化域的表示，实数域的值 $x_r, y_r, z_r$ 所对应的量化域中的值分别为
 $x_q, y_q, z_q$，三者各自对应的比例因子为 $x_{scale}, y_{scale}, z_{scale}$ , 零点为 $x_{zero}, y_{zero},
  z_{zero}$
 那么对应的实数域的乘法的计算可以表示为
@@ -122,7 +122,7 @@ M = 2^{-n} M_0
 而在Winograd 卷积实现的将输入由空间域向winograd域 变换过程中，F（2，3） 的Winograd 算法中基本只涉及加减操作，
 在这一过程中将输入的无符号8位整数转换为16位带符号整数做处理，并且在后续的矩阵乘法操作中实现中使用 32 位的累加器,
 每次乘累加操作中，将16位整数乘法的结果widen 到32位再加到32位的累加器中。而在一般的基于GEMM的量化卷积实现中，
-累加结束后，会再次通过量化，将32位 的整数表示转换位8位整数的表示，这一过程可以称为再量化（re-quantization ）或者后累加量化（post-accumulation quantization）
+累加结束后，会再次通过量化，将32位 的整数表示转换为8位整数的表示，这一过程可以称为再量化（re-quantization ）或者后累加量化（post-accumulation quantization）
 而Winograd 卷积的实现中，乘累加操作结束之后，还需要执行输出变换操作，将Winograd 域中的矩阵乘法结果转换回空间域,
 此后再执行量化，并将量化之后的8位整数输出，从而降低对于内存带宽的压力和缓存占用。
 
@@ -131,7 +131,7 @@ M = 2^{-n} M_0
 此外，现在通用的卷积网络中，卷积操作之后通常还带有bias，而在卷积操作之后还通常会紧随着Batch Normalization 操作
 和 Relu 激活函数，这一流程构成了卷积网络中常用的一大范式即，Conv（+ Bias）$\to$ BatchNorm $\to$ Relu。相比于卷积操作
 而言添加Bias，并对输出的特征作Batch Normalization 和 relu激活本身从计算复杂度角度而言，都是不值一提的，但是在
-ARM 设备的这种嵌入市场景下，将这几个流程作为单独的操作在模型的运行时顺序执行，则是需要额外的存储消耗的（memory 
+ARM 设备的这种嵌入式场景下，将这几个流程作为单独的操作在模型的运行时顺序执行，则是需要额外的存储消耗的（memory 
 footprint）。每次执行单个操作的过程中，都需要从memory系统中读入上一操作输出的特征，并且把简单计算操作之后的结果
 再写入memory，这同在嵌入式场景计算和存储资源受限的条件下需要最大化计算/访存操作的比例的优化目标是相悖的。而注意到
 这些后续的操作实际上都是可以转化为区域性（regional wise）inplace 的操作的，特别是Batch Normalization 在模型训练
@@ -200,40 +200,57 @@ in-place的实现添加Bias，而在重量化之后，通过输出值截断（ou
 为将本文实现的卷积算法同卷积神经网络推理框架整合集成，并且验证其对于卷积神经网络推理在ARM Cortex A设备上加速的有效性， 本节针对于在移动端高效实现的卷积网络，在ARM Cortex A设备上运行集成了本文局部区域性多通道Winograd 卷积算法的卷积网络，以下从实验环境，实验设计和结果分析展开介绍。
 
 \subsection{实验环境与实验设计}
+\begin{table}[]
+  \centering
+  \caption{ResNet18 网络总体结构}
+  \begin{tabular}{ccc}
+    \toprule
+    结构名称 & 输出尺寸 & 结构 \\
+    \midrule
+    conv1 & 112x112 & 7x7, 64, stride 2 \\
+    block1 & 56x56 & $ \begin{bmatrix} 3x3, & 64 \\  3x3, & 64 \end{bmatrix} x 2 $ \\ 
+    \\
+    block2 & 28x28 & $ \begin{bmatrix} 3x3, & 128 \\  3x3, & 128 \end{bmatrix} x 2 $ \\
+    \\
+    block3 & 14x14 & $ \begin{bmatrix} 3x3, & 256 \\  3x3, & 256 \end{bmatrix} x 2 $ \\
+    \\
+    block4 & 7x7 & $ \begin{bmatrix} 3x3, & 512 \\  3x3, & 512 \end{bmatrix} x 2 $ \\
+    \bottomrule
+  \end{tabular}
+  \label{tbl:resnet_arch}
+\end{table}
 
-这里的硬件环境配置同第三章\ref{cha:chapter03} 一致。由于 Winograd 卷积算法不支持 Depthwise Separable卷积，目前应用于移动端的主流网络模型中，SqueezeNet\cite{SqueezeNet}不具备Depthwise Separable 卷积，因此本节实验中，使用SqueezeNet作为验证卷积网络加速效果的模型。这里参照的对比实现同样为TensorFlow Lite中针对于量化卷积的Im2col 卷积实现。
 
-SqueezeNet 结构中同时包含3x3卷积与1x1 卷积，本节将针对于各个3x3 卷积的加速效果和网络整体的加速效果展开实验与分析。
+这里的硬件环境配置同第三章\ref{cha:chapter03} 一致。本节实验中，使用ResNet18 作为验证卷积网络加速效果的模型。这里的对比实现同样为TensorFlow Lite中量化卷积的Im2col 卷积实现。本文将这里实现的快速卷积方法集成入PyTorch，实验结果由在PyTorch上运行模型的时间为准。本文实现所作用的有效对象为网络结构中的3x3， stride 为 1 的卷积。
+
+ResNet18 结构中包含多个Residual Block，可参见\ref{tbl:resnet_arch}本节将针对于各个卷积Residual Block 的加速效果和网络整体的加速效果展开实验与分析。
 
 \subsection{实验结果与分析}
+
+表\ref{tbl:conv_speedup} 中显示了在ResNet18 中的各个卷积子结构的加速效果以及网络整体的加速效果。可见本文提出的局部区域多通道卷积算法对于在实际网络中的卷积计算加速有着显著的提升，同时对于移动端所使用的卷积神经网络在边缘设备上的运行效率提升也具有着明显的意义。
+
+
 \begin{table}[]
 \centering
-\caption{SqueezeNet 中3x3 卷积加速效果}
+\caption{ResNet18 网络及子结构加速效果}
 \begin{tabular}{ccccc}
   \toprule
-  输入     & 卷积核   & Im2Col(ms) & 本文(ms) & 加速效果 \\
+  结构   & Im2Col(ms) & 本文(ms) & 加速效果 \\
   \midrule
-  54x54x16  & 3x3x64  & 7.06  & 4.5 & 1.56x \\
-  54x54x32 & 3x3x128  & 2.42 & 14.14 & 1.71x \\
-  27x27x32 & 3x3x128  & 5.51 & 2.62 & 2.10x \\
-  27x27x48 & 3x3x192  & 11.32 & 7.23 & 1.57x \\
-  27x27x64 & 3x3x256  & 20.05 & 13.62 & 1.47x \\
-  13x13x64 & 3x3x256  & 3.89 & 2.23 & 1.74x \\
-  \multicolumn{2}{c}{整体网络加速}& 262.85 & 228.51  & 1.15x \\
+  conv1  & 51.047  & 31.529 & 1.619 \\
+  block1  &  114.559 & 65.675 & 1.744x \\
+  block2  & 95.723 & 76.505 & 1.251 \\
+  block3  & 86.587 & 70.223 & 1.233 \\
+  block4 & 95.916 & 81.382 & 1.179 \\
+  整体网络& 446.786 & 326.678  & 1.368 \\
   \bottomrule
 \end{tabular}
 \label{tbl:conv_speedup}
 \end{table}
-
-表\ref{tbl:conv_speedup} 中显示了在SqueezeNet中的各个3x3 卷积的加速效果以及网络整体的加速效果。可见本文提出的局部区域多通道卷积算法对于在实际网络中的卷积计算加速有着显著的提升，同时对于移动端所使用的卷积神经网络在边缘设备上的运行效率提升也具有着明显的意义。
-
-
-而整个SqueezeNet网络整体的加速效果则为1.11 倍，从GEMM实现的量化卷积算法的单张图片262.85ms 缩减到使用区域多通道的Winograd 量化卷积实现的228.51 ms, 这来自于网络中大量使用了1x1 卷积，使得Winograd 卷积的加速效果被均摊。
-
 \iffalse
 \section{实验验证}
 
-这一部分验证本文中实现的整数Winograd 快速卷积在嵌入式设别上的有效性，
+这一部分验证本文中实现的整数Winograd 快速卷积在嵌入式设备上的有效性，
 包括
 \begin{itemize}
   \item 针对单个卷积操作本身的执行效率，测量不同尺度规模的卷积输入下
